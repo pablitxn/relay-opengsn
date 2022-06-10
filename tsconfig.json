@@ -1,0 +1,30 @@
+{
+  "include": [
+    "src/**/*.ts",
+  ],
+  "exclude": ["**/node_modules", "**/dist", "./node_modules"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "allowSyntheticDefaultImports": true,
+    "composite": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "target": "es2017",
+    "module": "commonjs",
+    "strict": true,
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "declaration": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["dom", "es2015", "esnext.asynciterable"],
+    "sourceMap": true,
+    "typeRoots": ["./node_modules/@types", "./types"],
+    "types": ["openzeppelin__test-helpers", "date-format", "chai-bn"]
+  }
+}
