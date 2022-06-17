@@ -1,0 +1,8 @@
+{
+  "baseRelayFee": 0,
+  "pctRelayFee": 70,
+  "relayHubAddress": "<deployed relay hub>",
+  "ownerAddress": "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1",
+  "gasPriceFactor": 1,
+  "ethereumNodeUrl": "https://<network>.infura.io/v3/<INFURA-ID>"
+}

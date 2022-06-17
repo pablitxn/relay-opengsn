@@ -1,120 +1,152 @@
 // TODO: convert to 'commander' format
-import fs from 'fs'
-import Web3 from 'web3'
-import { JsonRpcPayload, JsonRpcResponse } from 'web3-core-helpers'
-import { HttpServer } from './HttpServer'
-import { RelayServer } from './RelayServer'
-import { KeyManager } from './KeyManager'
-import { TXSTORE_FILENAME, TxStoreManager } from './TxStoreManager'
-import { ContractInteractor } from '@opengsn/common/dist/ContractInteractor'
+import fs from "fs"
+import Web3 from "web3"
+import { JsonRpcPayload, JsonRpcResponse } from "web3-core-helpers"
+import { HttpServer } from "./HttpServer"
+import { RelayServer } from "./RelayServer"
+import { KeyManager } from "./KeyManager"
+import { TXSTORE_FILENAME, TxStoreManager } from "./TxStoreManager"
+import { ContractInteractor } from "@opengsn/common/dist/ContractInteractor"
 import {
   LoggingProviderMode,
   parseServerConfig,
   resolveReputationManagerConfig,
   resolveServerConfig,
   ServerConfigParams,
-  ServerDependencies
-} from './ServerConfigParams'
-import { createServerLogger } from './ServerWinstonLogger'
-import { PenalizerDependencies, PenalizerService } from './penalizer/PenalizerService'
-import { TransactionManager } from './TransactionManager'
-import { EtherscanCachedService } from './penalizer/EtherscanCachedService'
-import { TransactionDataCache, TX_PAGES_FILENAME, TX_STORE_FILENAME } from './penalizer/TransactionDataCache'
-import { GasPriceFetcher } from './GasPriceFetcher'
-import { ReputationManager, ReputationManagerConfiguration } from './ReputationManager'
-import { REPUTATION_STORE_FILENAME, ReputationStoreManager } from './ReputationStoreManager'
-import { Environment, EnvironmentsKeys, gsnRequiredVersion, gsnRuntimeVersion, VersionsManager } from '@opengsn/common'
+  ServerDependencies,
+} from "./ServerConfigParams"
+import { createServerLogger } from "./ServerWinstonLogger"
+import {
+  PenalizerDependencies,
+  PenalizerService,
+} from "./penalizer/PenalizerService"
+import { TransactionManager } from "./TransactionManager"
+import { EtherscanCachedService } from "./penalizer/EtherscanCachedService"
+import {
+  TransactionDataCache,
+  TX_PAGES_FILENAME,
+  TX_STORE_FILENAME,
+} from "./penalizer/TransactionDataCache"
+import { GasPriceFetcher } from "./GasPriceFetcher"
+import {
+  ReputationManager,
+  ReputationManagerConfiguration,
+} from "./ReputationManager"
+import {
+  REPUTATION_STORE_FILENAME,
+  ReputationStoreManager,
+} from "./ReputationStoreManager"
+import {
+  Environment,
+  EnvironmentsKeys,
+  gsnRequiredVersion,
+  gsnRuntimeVersion,
+  VersionsManager,
+} from "@opengsn/common"
 
-function error (err: string): never {
+function error(err: string): never {
   console.error(err)
   process.exit(1)
 }
 
-function sanitizeJsonRpcPayload (request: JsonRpcPayload): JsonRpcPayload {
+function sanitizeJsonRpcPayload(request: JsonRpcPayload): JsonRpcPayload {
   // protect original object from modification
   const clone = JSON.parse(JSON.stringify(request))
   const data = clone?.params[0]?.data
-  if (typeof data === 'string' && data.length > 1000) {
-    clone.params[0].data = data.substr(0, 70) + '...'
+  if (typeof data === "string" && data.length > 1000) {
+    clone.params[0].data = data.substr(0, 70) + "..."
   }
   return clone
 }
 
-function sanitizeJsonRpcResponse (response?: JsonRpcResponse): JsonRpcResponse | undefined {
+function sanitizeJsonRpcResponse(
+  response?: JsonRpcResponse
+): JsonRpcResponse | undefined {
   if (response == null) {
     return response
   }
   // protect original object from modification
   const clone: JsonRpcResponse = JSON.parse(JSON.stringify(response))
-  if (typeof clone.result === 'string' && clone.result.length > 1000) {
-    clone.result = clone.result.substr(0, 70) + '...'
+  if (typeof clone.result === "string" && clone.result.length > 1000) {
+    clone.result = clone.result.substr(0, 70) + "..."
   }
   return clone
 }
 
-async function run (): Promise<void> {
+async function run(): Promise<void> {
   let config: ServerConfigParams
   let environment: Environment
   let web3provider
   let runPenalizer: boolean
   let reputationManagerConfig: Partial<ReputationManagerConfiguration>
   let runPaymasterReputations: boolean
-  console.log('Starting GSN Relay Server process...\n')
+  console.log("Starting GSN Relay Server process...\n")
   try {
-    console.log('Parsing server config...\n')
+    console.log("Parsing server config...\n")
     const conf = await parseServerConfig(process.argv.slice(2), process.env)
     if (conf.ethereumNodeUrl == null) {
-      error('missing ethereumNodeUrl')
+      error("missing ethereumNodeUrl")
     }
-    const loggingProvider: LoggingProviderMode = conf.loggingProvider ?? LoggingProviderMode.NONE
+    const loggingProvider: LoggingProviderMode =
+      conf.loggingProvider ?? LoggingProviderMode.NONE
     conf.environmentName = conf.environmentName ?? EnvironmentsKeys.ganacheLocal
     web3provider = new Web3.providers.HttpProvider(conf.ethereumNodeUrl)
     if (loggingProvider !== LoggingProviderMode.NONE) {
       const orig = web3provider
       web3provider = {
         // @ts-ignore
-        send (r, cb) {
+        send(r, cb) {
           const startTimestamp = Date.now()
           switch (loggingProvider) {
             case LoggingProviderMode.DURATION: {
-              let blockRange = ''
+              let blockRange = ""
               if (r?.params[0]?.fromBlock != null) {
-                blockRange = `(${r?.params[0]?.fromBlock as string} - ${r?.params[0]?.toBlock as string})`
+                blockRange = `(${r?.params[0]?.fromBlock as string} - ${
+                  r?.params[0]?.toBlock as string
+                })`
               }
-              console.log('>>> ', r.method, blockRange)
+              console.log(">>> ", r.method, blockRange)
               break
             }
             case LoggingProviderMode.ALL:
-              console.log('>>> ', sanitizeJsonRpcPayload(r))
+              console.log(">>> ", sanitizeJsonRpcPayload(r))
               // eslint-disable-next-line
               if (r && r.params && r.params[0] && r.params[0].topics) {
-                console.log('>>>\n', r.params[0].topics, '\n')
+                console.log(">>>\n", r.params[0].topics, "\n")
               }
               break
           }
           // eslint-disable-next-line
           if (r && r.params && r.params[0] && r.params[0].fromBlock == 1) {
-            console.warn('=== eth_getLogs fromBlock: 1, potentially long operation!')
+            console.warn(
+              "=== eth_getLogs fromBlock: 1, potentially long operation!"
+            )
           }
           orig.send(r, (err, res) => {
             const duration = Date.now() - startTimestamp
             switch (loggingProvider) {
               case LoggingProviderMode.DURATION:
-                console.log('<<<', r.method, duration)
+                console.log("<<<", r.method, duration)
                 break
               case LoggingProviderMode.ALL:
-                console.log('<<<\n', r.method, duration, err, sanitizeJsonRpcResponse(res))
+                console.log(
+                  "<<<\n",
+                  r.method,
+                  duration,
+                  err,
+                  sanitizeJsonRpcResponse(res)
+                )
                 break
             }
             cb(err, res)
           })
-        }
+        },
       }
     }
-    console.log('Resolving server config ...\n');
-    ({ config, environment } = await resolveServerConfig(conf, web3provider))
+    console.log("Resolving server config ...\n")
+    ;({ config, environment } = await resolveServerConfig(conf, web3provider))
     runPenalizer = config.runPenalizer
-    console.log('Resolving reputation manager config...\n')
+    console.log("Resolving reputation manager config...\n")
     reputationManagerConfig = resolveReputationManagerConfig(conf)
     runPaymasterReputations = config.runPaymasterReputations
   } catch (e: any) {
@@ -135,33 +167,62 @@ async function run (): Promise<void> {
       fs.unlinkSync(`${workdir}/${TX_PAGES_FILENAME}`)
     }
   }
-  console.log('Creating server logger...\n')
-  const logger = createServerLogger(config.logLevel, config.loggerUrl, config.loggerUserId)
-  console.log('Creating managers...\n')
+  console.log("Creating server logger...\n")
+  const logger = createServerLogger(
+    config.logLevel,
+    config.loggerUrl,
+    config.loggerUserId
+  )
+  console.log("Creating managers...\n")
   const managerKeyManager = new KeyManager(1, `${workdir}/manager`)
-  const workersKeyManager = new KeyManager(1, `${workdir}/workers/${config.relayHubAddress}`)
-  const txStoreManager = new TxStoreManager({ workdir, autoCompactionInterval: config.dbAutoCompactionInterval }, logger)
-  console.log('Creating interactor...\n')
+  const workersKeyManager = new KeyManager(
+    1,
+    `${workdir}/workers/${config.relayHubAddress}`
+  )
+  const txStoreManager = new TxStoreManager(
+    { workdir, autoCompactionInterval: config.dbAutoCompactionInterval },
+    logger
+  )
+  console.log("Creating interactor...\n")
   const contractInteractor = new ContractInteractor({
     provider: web3provider,
     logger,
     environment,
     maxPageSize: config.pastEventsQueryMaxPageSize,
-    versionManager: new VersionsManager(gsnRuntimeVersion, config.requiredVersionRange ?? gsnRequiredVersion),
+    versionManager: new VersionsManager(
+      gsnRuntimeVersion,
+      config.requiredVersionRange ?? gsnRequiredVersion
+    ),
     deployment: {
       relayHubAddress: config.relayHubAddress,
-      managerStakeTokenAddress: config.managerStakeTokenAddress
-    }
+      managerStakeTokenAddress: config.managerStakeTokenAddress,
+    },
   })
-  console.log('Initializing interactor...\n')
+  console.log("Initializing interactor...\n")
+
   await contractInteractor.init()
-  console.log('Creating gasPrice fetcher...\n')
-  const gasPriceFetcher = new GasPriceFetcher(config.gasPriceOracleUrl, config.gasPriceOraclePath, contractInteractor, logger)
+
+  console.log("Creating gasPrice fetcher...\n")
+  const gasPriceFetcher = new GasPriceFetcher(
+    config.gasPriceOracleUrl,
+    config.gasPriceOraclePath,
+    contractInteractor,
+    logger
+  )
   let reputationManager: ReputationManager | undefined
   if (runPaymasterReputations) {
-    console.log('Running paymaster reputation: creating reputation manager ...\n')
-    const reputationStoreManager = new ReputationStoreManager({ workdir, inMemory: true }, logger)
-    reputationManager = new ReputationManager(reputationStoreManager, logger, reputationManagerConfig)
+    console.log(
+      "Running paymaster reputation: creating reputation manager ...\n"
+    )
+    const reputationStoreManager = new ReputationStoreManager(
+      { workdir, inMemory: true },
+      logger
+    )
+    reputationManager = new ReputationManager(
+      reputationStoreManager,
+      logger,
+      reputationManagerConfig
+    )
   }
 
   const dependencies: ServerDependencies = {
@@ -171,34 +232,50 @@ async function run (): Promise<void> {
     managerKeyManager,
     workersKeyManager,
     contractInteractor,
-    gasPriceFetcher
+    gasPriceFetcher,
   }
-  console.log('Creating Transaction Manager...\n')
-  const transactionManager: TransactionManager = new TransactionManager(dependencies, config)
+  console.log("Creating Transaction Manager...\n")
+  const transactionManager: TransactionManager = new TransactionManager(
+    dependencies,
+    config
+  )
 
   let penalizerService: PenalizerService | undefined
   if (runPenalizer) {
-    console.log('Running Penalizer: creating transaction data cache...\n')
-    const transactionDataCache: TransactionDataCache = new TransactionDataCache(logger, config.workdir)
+    console.log("Running Penalizer: creating transaction data cache...\n")
+    const transactionDataCache: TransactionDataCache = new TransactionDataCache(
+      logger,
+      config.workdir
+    )
 
-    console.log('Running Penalizer: creating etherscan cached service...\n')
-    const txByNonceService = new EtherscanCachedService(config.etherscanApiUrl, config.etherscanApiKey, logger, transactionDataCache)
+    console.log("Running Penalizer: creating etherscan cached service...\n")
+    const txByNonceService = new EtherscanCachedService(
+      config.etherscanApiUrl,
+      config.etherscanApiKey,
+      logger,
+      transactionDataCache
+    )
     const penalizerParams: PenalizerDependencies = {
       transactionManager,
       contractInteractor,
-      txByNonceService
+      txByNonceService,
     }
-    console.log('Running Penalizer: creating penalizer service...\n')
+    console.log("Running Penalizer: creating penalizer service...\n")
     penalizerService = new PenalizerService(penalizerParams, logger, config)
-    console.log('Running Penalizer: initializing penalizer service...\n')
+    console.log("Running Penalizer: initializing penalizer service...\n")
     await penalizerService.init()
   }
-  console.log('Creating relay server...\n')
+  console.log("Creating relay server...\n")
   const relay = new RelayServer(config, transactionManager, dependencies)
-  console.log('Initializing penalizer service...\n')
+  console.log("Initializing penalizer service...\n")
   await relay.init()
-  console.log('Creating http server...\n')
-  const httpServer = new HttpServer(config.port, logger, relay, penalizerService)
+  console.log("Creating http server...\n")
+  const httpServer = new HttpServer(
+    config.port,
+    logger,
+    relay,
+    penalizerService
+  )
   httpServer.start()
 }
 
